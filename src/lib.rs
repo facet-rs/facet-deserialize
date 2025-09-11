@@ -2,7 +2,6 @@
 #![warn(missing_docs)]
 #![warn(clippy::std_instead_of_core)]
 #![warn(clippy::std_instead_of_alloc)]
-#![forbid(unsafe_code)]
 #![doc = include_str!("../README.md")]
 
 extern crate alloc;
@@ -795,35 +794,8 @@ impl<'input> StackRunner<'input> {
                     })?;
                     if !is_set {
                         if field.flags.contains(FieldFlags::DEFAULT) {
-                            wip.begin_nth_field(index)
+                            wip.set_nth_field_to_default(index)
                                 .map_err(|e| self.reflect_err(e))?;
-
-                            // Check for field-level default function first, then type-level default
-                            if let Some(field_default_fn) = field.vtable.default_fn {
-                                wip.set_field_default(field_default_fn)
-                                    .map_err(|e| self.reflect_err(e))?;
-                                trace!(
-                                    "Field #{} {} @ {} was set to default value (via field default function)",
-                                    index.yellow(),
-                                    field.name.green(),
-                                    field.offset.blue(),
-                                );
-                            } else if field.shape().is(Characteristic::Default) {
-                                wip.set_default().map_err(|e| self.reflect_err(e))?;
-                                trace!(
-                                    "Field #{} {} @ {} was set to default value (via type default impl)",
-                                    index.yellow(),
-                                    field.name.green(),
-                                    field.offset.blue(),
-                                );
-                            } else {
-                                return Err(self.reflect_err(
-                                    ReflectError::DefaultAttrButNoDefaultImpl {
-                                        shape: field.shape(),
-                                    },
-                                ));
-                            }
-                            wip.end().map_err(|e| self.reflect_err(e))?;
                         } else {
                             trace!(
                                 "Field #{} {} @ {} is not initialized",
@@ -863,8 +835,14 @@ impl<'input> StackRunner<'input> {
                                     .map_err(|e| self.reflect_err(e))?;
                                 // Get the field as a Peek from the default value
                                 let def_field = peek.field(index).unwrap();
-                                wip.set_from_peek(&def_field)
-                                    .map_err(|e| self.reflect_err(e))?;
+
+                                // SAFETY: this is actually wrong, since it's moving out of a field of
+                                // the struct `peek` points to, so if that field has a Drop impl
+                                // it'll be dropped twice.
+                                unsafe {
+                                    wip.set_from_peek(&def_field)
+                                        .map_err(|e| self.reflect_err(e))?;
+                                }
                                 wip.end().map_err(|e| self.reflect_err(e))?;
                             }
                         }
@@ -885,7 +863,7 @@ impl<'input> StackRunner<'input> {
                     }
                 }
             }
-            Type::User(UserType::Enum(ed)) => {
+            Type::User(UserType::Enum(_ed)) => {
                 trace!("Checking if enum is initialized correctly");
 
                 // Check if a variant has been selected
@@ -908,9 +886,8 @@ impl<'input> StackRunner<'input> {
                                         .map_err(|e| self.reflect_err(e))?;
 
                                     // Check for field-level default function first, then type-level default
-                                    if let Some(field_default_fn) = field.vtable.default_fn {
-                                        wip.set_field_default(field_default_fn)
-                                            .map_err(|e| self.reflect_err(e))?;
+                                    if field.vtable.default_fn.is_some() {
+                                        wip.set_default().map_err(|e| self.reflect_err(e))?;
                                         trace!(
                                             "Field #{} @ {} in variant {} was set to default value (via field default function)",
                                             index.yellow(),
@@ -976,8 +953,14 @@ impl<'input> StackRunner<'input> {
                                             if let Ok(Some(def_field)) = peek_enum.field(index) {
                                                 wip.begin_nth_field(index)
                                                     .map_err(|e| self.reflect_err(e))?;
-                                                wip.set_from_peek(&def_field)
-                                                    .map_err(|e| self.reflect_err(e))?;
+
+                                                // SAFETY: this is actually wrong, since it's moving out of a field of
+                                                // the struct `peek` points to, so if that field has a Drop impl
+                                                // it'll be dropped twice.
+                                                unsafe {
+                                                    wip.set_from_peek(&def_field)
+                                                        .map_err(|e| self.reflect_err(e))?;
+                                                }
                                                 wip.end().map_err(|e| self.reflect_err(e))?;
                                             }
                                         }
@@ -1006,41 +989,14 @@ impl<'input> StackRunner<'input> {
                 } else if container_shape.has_default_attr() {
                     // No variant selected, but enum has default attribute - set to default
                     trace!("No variant selected but enum has DEFAULT attr; setting to default");
-                    let default_val = Partial::alloc_shape(container_shape)
-                        .map_err(|e| self.reflect_err(e))?
-                        .set_default()
-                        .map_err(|e| self.reflect_err(e))?
-                        .build()
-                        .map_err(|e| self.reflect_err(e))?;
 
-                    let peek = default_val.peek();
-                    let peek_enum = peek.into_enum().map_err(|e| self.reflect_err(e))?;
-                    let default_variant_idx = peek_enum
-                        .variant_index()
-                        .map_err(|e| self.err(DeserErrorKind::VariantError(e)))?;
-
-                    // Select the default variant
-                    wip.select_nth_variant(default_variant_idx)
-                        .map_err(|e| self.reflect_err(e))?;
-
-                    // Copy all fields from default value
-                    let variant = &ed.variants[default_variant_idx];
-                    for (index, _field) in variant.data.fields.iter().enumerate() {
-                        if let Ok(Some(def_field)) = peek_enum.field(index) {
-                            wip.begin_nth_field(index)
-                                .map_err(|e| self.reflect_err(e))?;
-                            wip.set_from_peek(&def_field)
-                                .map_err(|e| self.reflect_err(e))?;
-                            wip.end().map_err(|e| self.reflect_err(e))?;
-                        }
-                    }
+                    wip.set_default().map_err(|e| self.reflect_err(e))?;
                 }
             }
             _ => {
                 trace!(
-                    "Thing being popped is not a container I guess (it's a {}, innermost is {})",
+                    "Thing being popped is not a container I guess (it's a {})",
                     wip.shape(),
-                    wip.innermost_shape()
                 );
             }
         }
@@ -1057,7 +1013,7 @@ impl<'input> StackRunner<'input> {
     where
         'input: 'facet,
     {
-        let shape = wip.innermost_shape();
+        let shape = wip.shape();
 
         let Type::Primitive(PrimitiveType::Numeric(numeric_type)) = shape.ty else {
             return Err(self.err(DeserErrorKind::UnsupportedType {
@@ -1157,7 +1113,7 @@ impl<'input> StackRunner<'input> {
     {
         match scalar {
             Scalar::String(cow) => {
-                match wip.innermost_shape().ty {
+                match wip.shape().ty {
                     Type::User(UserType::Enum(_)) => {
                         if wip.selected_variant().is_some() {
                             // If we already have a variant selected, just put the string
@@ -1172,15 +1128,13 @@ impl<'input> StackRunner<'input> {
                                 None => {
                                     return Err(self.err(DeserErrorKind::NoSuchVariant {
                                         name: cow.to_string(),
-                                        enum_shape: wip.innermost_shape(),
+                                        enum_shape: wip.shape(),
                                     }));
                                 }
                             }
                         }
                     }
-                    Type::Pointer(PointerType::Reference(_))
-                        if wip.innermost_shape().is_type::<&str>() =>
-                    {
+                    Type::Pointer(PointerType::Reference(_)) if wip.shape().is_type::<&str>() => {
                         // This is for handling the &str type
                         // The Cow may be Borrowed (we may have an owned string but need a &str)
                         match cow {
@@ -1190,7 +1144,7 @@ impl<'input> StackRunner<'input> {
                     }
                     _ => {
                         // Check if this is a scalar type that can be parsed from a string
-                        let shape = wip.innermost_shape();
+                        let shape = wip.shape();
                         if matches!(shape.def, Def::Scalar) {
                             // Try parse_from_str for scalar types that might parse from strings
                             // (like IpAddr, UUID, Path, etc.)
@@ -1340,7 +1294,7 @@ impl<'input> StackRunner<'input> {
                 self.handle_scalar(&mut wip, s)?;
             }
             Outcome::ListStarted => {
-                let shape = wip.innermost_shape();
+                let shape = wip.shape();
 
                 // First check if this is a tuple struct (including empty tuples)
                 if let Type::User(UserType::Struct(st)) = shape.ty {
@@ -1531,7 +1485,7 @@ impl<'input> StackRunner<'input> {
                 let mut needs_pop = true;
                 let mut handled_by_flatten = false;
 
-                let shape = wip.innermost_shape();
+                let shape = wip.shape();
                 match shape.ty {
                     Type::User(UserType::Struct(sd)) => {
                         // First try to find a direct field match
@@ -1780,7 +1734,7 @@ impl<'input> StackRunner<'input> {
                             }
 
                             // Set this array element
-                            wip.begin_nth_element(current_index)
+                            wip.begin_nth_field(current_index)
                                 .map_err(|e| self.reflect_err(e))?;
 
                             // Increment the index for next time
@@ -1817,7 +1771,7 @@ impl<'input> StackRunner<'input> {
                                 }
 
                                 // Process this tuple field
-                                wip.begin_nth_enum_field(current_field)
+                                wip.begin_nth_field(current_field)
                                     .map_err(|e| self.reflect_err(e))?;
 
                                 // Advance to next field
