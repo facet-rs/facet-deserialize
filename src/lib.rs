@@ -1266,8 +1266,7 @@ impl<'input> StackRunner<'input> {
                 );
                 self.stack.push(Instruction::Pop(PopReason::SmartPointer));
                 smart_pointer_begun = true;
-            } else if let Some(inner_fn) = wip.shape().inner {
-                let inner = inner_fn();
+            } else if let Some(inner) = wip.shape().inner {
                 trace!(
                     "  Starting wrapped value for {} (inner is {})",
                     wip.shape().blue(),
