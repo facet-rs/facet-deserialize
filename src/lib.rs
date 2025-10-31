@@ -9,7 +9,7 @@ extern crate alloc;
 use alloc::string::ToString;
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
-use facet_core::{NumericType, PrimitiveType};
+use facet_core::{NumericType, PointerDef, PrimitiveType, Shape};
 
 mod error;
 use alloc::borrow::Cow;
@@ -1240,7 +1240,7 @@ impl<'input> StackRunner<'input> {
                 trace!("  Starting Some(_) option for {}", wip.shape().blue());
                 wip.begin_some().map_err(|e| self.reflect_err(e))?;
                 self.stack.push(Instruction::Pop(PopReason::Some));
-            } else if let Def::Pointer(inner) = wip.shape().def {
+            } else if let Some(inner) = constructible_from_pointee(wip.shape()) {
                 // Check if we've already begun this smart pointer
                 // (this can happen with slice pointees where the shape doesn't change)
                 if smart_pointer_begun {
@@ -1344,10 +1344,13 @@ impl<'input> StackRunner<'input> {
                                                 Some(variant.data.fields.len());
                                             self.enum_tuple_current_field = Some(0);
                                         } else {
-                                            return Err(self.err(DeserErrorKind::UnsupportedType {
-                                                got: shape,
-                                                wanted: "tuple variant for array deserialization",
-                                            }));
+                                            return Err(self.err(
+                                                DeserErrorKind::UnsupportedType {
+                                                    got: shape,
+                                                    wanted:
+                                                        "tuple variant for array deserialization",
+                                                },
+                                            ));
                                         }
                                     } else {
                                         return Err(self.err(DeserErrorKind::UnsupportedType {
@@ -1842,6 +1845,13 @@ impl<'input> StackRunner<'input> {
                 Ok(wip)
             }
         }
+    }
+}
+
+fn constructible_from_pointee(shape: &Shape) -> Option<PointerDef> {
+    match shape.def {
+        Def::Pointer(inner) if inner.constructible_from_pointee() => Some(inner),
+        _ => None,
     }
 }
 
