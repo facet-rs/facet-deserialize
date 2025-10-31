@@ -1240,7 +1240,7 @@ impl<'input> StackRunner<'input> {
                 trace!("  Starting Some(_) option for {}", wip.shape().blue());
                 wip.begin_some().map_err(|e| self.reflect_err(e))?;
                 self.stack.push(Instruction::Pop(PopReason::Some));
-            } else if let Def::Pointer(inner) = wip.shape().def {
+            } else if let Def::Pointer(inner) = wip.shape().def && inner.constructible_from_pointee() {
                 // Check if we've already begun this smart pointer
                 // (this can happen with slice pointees where the shape doesn't change)
                 if smart_pointer_begun {
