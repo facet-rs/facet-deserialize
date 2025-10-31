@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.1](https://github.com/facet-rs/facet-deserialize/compare/v0.31.0...v0.31.1) - 2025-10-31
+
+### Fixed
+
+- fix reference deserialization?
+
+### Other
+
+- i shall protect msrv with everything i've got
+- update deps again?
+- update deps
+
 ## [0.31.0](https://github.com/facet-rs/facet-deserialize/compare/v0.30.0...v0.31.0) - 2025-10-31
 
 ### Other
