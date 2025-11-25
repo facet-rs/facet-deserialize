@@ -232,6 +232,8 @@ pub enum PopReason {
     SmartPointer,
     /// Ending a wrapper value such as a newtype
     Wrapper,
+    /// Ending custom deserialization
+    CustomDeserialization,
 }
 
 mod deser_impl {
@@ -781,6 +783,12 @@ impl<'input> StackRunner<'input> {
         );
         trace!("Popping because {:?}", reason.yellow());
 
+        if matches!(reason, PopReason::CustomDeserialization) {
+            let source_shape = wip.shape();
+            trace!("custom deserialization using {source_shape}");
+            return Ok(wip);
+        }
+
         let container_shape = wip.shape();
         match container_shape.ty {
             Type::User(UserType::Struct(sd)) => {
@@ -1236,7 +1244,19 @@ impl<'input> StackRunner<'input> {
         let mut smart_pointer_begun = false;
         loop {
             trace!("  Loop iteration: current shape is {}", wip.shape().blue());
-            if matches!(wip.shape().def, Def::Option(_)) {
+            #[cfg(feature = "alloc")]
+            let supports_custom_deserialization = wip
+                .parent_field()
+                .and_then(|field| field.vtable.deserialize_with)
+                .is_some();
+            #[cfg(not(feature = "alloc"))]
+            let supports_custom_deserialization = false;
+            if supports_custom_deserialization {
+                wip.begin_custom_deserialization()
+                    .map_err(|e| self.reflect_err(e))?;
+                self.stack
+                    .push(Instruction::Pop(PopReason::CustomDeserialization));
+            } else if matches!(wip.shape().def, Def::Option(_)) {
                 trace!("  Starting Some(_) option for {}", wip.shape().blue());
                 wip.begin_some().map_err(|e| self.reflect_err(e))?;
                 self.stack.push(Instruction::Pop(PopReason::Some));
