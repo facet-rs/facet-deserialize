@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.2](https://github.com/facet-rs/facet-deserialize/compare/v0.31.1...v0.31.2) - 2025-11-25
+
+### Other
+
+- Support deserialize_with ([#13](https://github.com/facet-rs/facet-deserialize/pull/13))
+- Update github/codeql-action action to v4 ([#5](https://github.com/facet-rs/facet-deserialize/pull/5))
+- Update Rust crate ariadne to 0.6.0 ([#7](https://github.com/facet-rs/facet-deserialize/pull/7))
+- Update Rust crate facet to v0.31.4 ([#9](https://github.com/facet-rs/facet-deserialize/pull/9))
+- Update Rust crate facet-testhelpers to v0.31.4 ([#10](https://github.com/facet-rs/facet-deserialize/pull/10))
+- Update actions/checkout action to v6 ([#11](https://github.com/facet-rs/facet-deserialize/pull/11))
+
 ## [0.31.1](https://github.com/facet-rs/facet-deserialize/compare/v0.31.0...v0.31.1) - 2025-10-31
 
 ### Fixed
